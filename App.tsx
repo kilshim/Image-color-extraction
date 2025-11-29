@@ -132,6 +132,7 @@ export default function App() {
 
   // API Key Modal State
   const [isKeyModalOpen, setIsKeyModalOpen] = useState(false);
+  const [hasStoredKey, setHasStoredKey] = useState(false);
   const [inputApiKey, setInputApiKey] = useState('');
   const [keyTestStatus, setKeyTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [keyTestMessage, setKeyTestMessage] = useState('');
@@ -151,6 +152,16 @@ export default function App() {
     }
     localStorage.setItem(THEME_KEY, theme);
   }, [theme]);
+
+  // Check key on modal open
+  useEffect(() => {
+    if (isKeyModalOpen) {
+      setHasStoredKey(!!localStorage.getItem(STORAGE_KEY));
+      setKeyTestMessage('');
+      setKeyTestStatus('idle');
+      setInputApiKey('');
+    }
+  }, [isKeyModalOpen]);
 
   const toggleTheme = () => {
     setTheme(prev => prev === 'light' ? 'dark' : 'light');
@@ -178,6 +189,7 @@ export default function App() {
       
       const encrypted = encryptKey(inputApiKey);
       localStorage.setItem(STORAGE_KEY, encrypted);
+      setHasStoredKey(true);
 
       setTimeout(() => {
         setIsKeyModalOpen(false);
@@ -190,6 +202,20 @@ export default function App() {
       setKeyTestMessage('연결 실패. API Key를 확인해주세요.');
       console.error(err);
     }
+  };
+
+  const handleDeleteKey = () => {
+    localStorage.removeItem(STORAGE_KEY);
+    setInputApiKey('');
+    setHasStoredKey(false);
+    setKeyTestStatus('success'); // Using success styling for feedback
+    setKeyTestMessage('API Key가 삭제되었습니다.');
+    
+    // Optional: Close modal after delay or keep it open for user to confirm
+    setTimeout(() => {
+        setKeyTestMessage('');
+        setKeyTestStatus('idle');
+    }, 2000);
   };
 
   const getApiKey = (): string | null => {
@@ -241,11 +267,6 @@ export default function App() {
     if (pastedText && (pastedText.startsWith('http') || pastedText.startsWith('data:image'))) {
         try {
             // Only attempt to fetch if it looks remotely like an image or a URL
-            // Basic indicator: prevent blocking normal copy-paste in other fields if needed, 
-            // but since we are global, we should be careful. 
-            // However, typical UX is: if I paste on the body, I expect the app to handle it.
-            
-            // Try fetching
             const response = await fetch(pastedText);
             if (!response.ok) throw new Error('Network error');
             
@@ -257,11 +278,6 @@ export default function App() {
             }
         } catch (err) {
             console.warn("Clipboard fetch failed or not an image URL", err);
-            // If the user explicitly pasted an image URL that fails CORS, we should probably let them know
-            // only if they are not focused on an input.
-            // But since this is a global listener, we'll just log it to avoid annoying popups for random text.
-            // If the user INTENDED to paste an image, they will see nothing happens.
-            // Let's add a check: if it looks like an image URL extension, warn them.
              if (pastedText.match(/\.(jpeg|jpg|gif|png|webp)/i)) {
                  alert("이미지를 불러올 수 없습니다. (CORS 보안 제한)\n이미지를 다운로드 후 업로드하거나, '이미지 복사' 기능을 사용해주세요.");
              }
@@ -679,7 +695,16 @@ export default function App() {
                 />
               </div>
               
-              <div className="flex justify-end">
+              <div className="flex justify-between items-center mt-4">
+                {hasStoredKey ? (
+                    <button
+                        onClick={handleDeleteKey}
+                        className="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 text-sm font-medium transition-colors"
+                    >
+                        저장된 키 삭제
+                    </button>
+                ) : <div></div>}
+                
                 <button
                   onClick={handleSaveAndTestKey}
                   disabled={keyTestStatus === 'testing'}
