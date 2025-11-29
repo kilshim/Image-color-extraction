@@ -1,0 +1,5 @@
+{
+  "name": "이미지에서 컬러추출",
+  "description": "Upload a photo and use Gemini to analyze its color palette. The app identifies prominent colors, providing their names, hex codes, and descriptions.",
+  "requestFramePermissions": []
+}
