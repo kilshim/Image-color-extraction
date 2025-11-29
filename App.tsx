@@ -50,6 +50,18 @@ const SettingsIcon: React.FC<{ className?: string }> = ({ className }) => (
     </svg>
 );
 
+const SunIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" />
+    </svg>
+);
+
+const MoonIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" />
+    </svg>
+);
+
 
 // Helper to convert RGB to Hex
 const rgbToHex = (r: number, g: number, b: number) => {
@@ -61,13 +73,10 @@ const rgbToHex = (r: number, g: number, b: number) => {
 
 // --- Security / Storage Helpers ---
 const STORAGE_KEY = 'enc_gemini_api_key';
+const THEME_KEY = 'color_palette_theme';
 
-// Simple "Encryption" (Obfuscation) for local storage
-// WARNING: This is client-side only and not truly secure against the user themselves, 
-// but it prevents plain text storage.
 const encryptKey = (key: string): string => {
   try {
-    // Simple XOR with a salt then Base64
     const salt = "color-palette-secret";
     let textToChars = (text: string) => text.split('').map(c => c.charCodeAt(0));
     let byteHex = (n: number) => ("0" + Number(n).toString(16)).substr(-2);
@@ -106,6 +115,16 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   
+  // Theme State
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem(THEME_KEY);
+      if (stored === 'light' || stored === 'dark') return stored;
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    return 'dark';
+  });
+
   // Eyedropper state
   const [isEyedropperActive, setIsEyedropperActive] = useState(false);
   const [hoverColor, setHoverColor] = useState<string | null>(null);
@@ -122,13 +141,20 @@ export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
 
-  // Load API key on mount (if exists)
+  // Apply Theme
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      // Key exists, user is ready to go
+    const root = window.document.documentElement;
+    if (theme === 'dark') {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
     }
-  }, []);
+    localStorage.setItem(THEME_KEY, theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'light' ? 'dark' : 'light');
+  };
 
   const handleSaveAndTestKey = async () => {
     if (!inputApiKey.trim()) {
@@ -141,22 +167,18 @@ export default function App() {
     setKeyTestMessage('연결 테스트 중...');
 
     try {
-      // Test the key with a lightweight request
       const ai = new GoogleGenAI({ apiKey: inputApiKey });
       await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: 'Hello',
       });
 
-      // Success
       setKeyTestStatus('success');
       setKeyTestMessage('연결 성공! 키가 안전하게 저장되었습니다.');
       
-      // Save encrypted
       const encrypted = encryptKey(inputApiKey);
       localStorage.setItem(STORAGE_KEY, encrypted);
 
-      // Close modal after a brief delay
       setTimeout(() => {
         setIsKeyModalOpen(false);
         setKeyTestStatus('idle');
@@ -246,7 +268,6 @@ export default function App() {
   const handleAnalyzeClick = useCallback(async () => {
     if (!imageFile) return;
 
-    // Retrieve Key
     const apiKey = getApiKey();
     if (!apiKey) {
       setIsKeyModalOpen(true);
@@ -259,15 +280,13 @@ export default function App() {
 
     try {
       const base64Image = await fileToBase64(imageFile);
-      // Pass the API key explicitly
       const result = await analyzeImageColors(base64Image, imageFile.type, apiKey);
       setAnalysisResult(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unexpected error occurred.');
-      // If unauthorized, maybe key is bad?
       if (err instanceof Error && err.message.includes('401')) {
          setError('API Key가 유효하지 않습니다. 설정을 확인해주세요.');
-         localStorage.removeItem(STORAGE_KEY); // Clear bad key
+         localStorage.removeItem(STORAGE_KEY);
       }
     } finally {
       setIsLoading(false);
@@ -283,72 +302,102 @@ export default function App() {
     setIsGeneratingPdf(true);
 
     try {
+      // PDF setup
       const doc = new jsPDF('p', 'mm', 'a4');
-      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageWidth = 210;
+      const pageHeight = 297;
       const margin = 10;
-      
+      const contentWidth = pageWidth - (margin * 2);
+      const contentHeight = pageHeight - (margin * 2);
+
+      // Create hidden container for rendering
       const printContainer = document.createElement('div');
-      printContainer.style.width = '800px';
-      printContainer.style.padding = '30px';
-      printContainer.style.background = '#111827'; 
-      printContainer.style.color = '#ffffff';
+      printContainer.style.width = '800px'; 
+      printContainer.style.padding = '40px';
+      
+      // Theme-aware print styles
+      const isDark = theme === 'dark';
+      printContainer.style.background = isDark ? '#111827' : '#ffffff';
+      printContainer.style.color = isDark ? '#ffffff' : '#111827';
       printContainer.style.position = 'absolute';
-      printContainer.style.top = '-9999px';
       printContainer.style.left = '-9999px';
+      printContainer.style.top = '0';
       document.body.appendChild(printContainer);
 
+      const titleColor = isDark ? '#818cf8' : '#4f46e5';
+      const metaColor = isDark ? '#9ca3af' : '#6b7280';
+      const cardBg = isDark ? 'rgba(31, 41, 55, 0.5)' : '#f9fafb';
+      const cardBorder = isDark ? '#374151' : '#e5e7eb';
+      const textColor = isDark ? '#f3f4f6' : '#1f2937';
+      const codeColor = isDark ? '#a5b4fc' : '#4338ca';
+      const descColor = isDark ? '#d1d5db' : '#4b5563';
+
+      // Add Header
       const header = document.createElement('div');
       header.innerHTML = `
-        <h1 style="font-size: 28px; font-weight: bold; margin-bottom: 5px; color: #818cf8;">색상 팔레트 분석</h1>
-        <p style="color: #9ca3af; margin-bottom: 30px; font-size: 14px;">생성일: ${new Date().toLocaleDateString()}</p>
+        <h1 style="font-size: 32px; font-weight: bold; margin-bottom: 10px; color: ${titleColor};">색상 팔레트 분석</h1>
+        <p style="color: ${metaColor}; margin-bottom: 40px; font-size: 16px;">생성일: ${new Date().toLocaleDateString()}</p>
       `;
       printContainer.appendChild(header);
 
+      // Add Color List
       const paletteContainer = document.createElement('div');
-      paletteContainer.style.display = 'grid';
+      paletteContainer.style.display = 'flex';
+      paletteContainer.style.flexDirection = 'column';
       paletteContainer.style.gap = '20px';
       
       analysisResult.palette.forEach(color => {
         const item = document.createElement('div');
         item.style.display = 'flex';
-        item.style.alignItems = 'center'; 
-        item.style.gap = '20px';
-        item.style.background = 'rgba(31, 41, 55, 0.5)'; 
-        item.style.padding = '20px';
-        item.style.borderRadius = '8px';
-        item.style.border = '1px solid #374151';
+        item.style.alignItems = 'flex-start'; 
+        item.style.gap = '25px';
+        item.style.background = cardBg; 
+        item.style.padding = '25px';
+        item.style.borderRadius = '12px';
+        item.style.border = `1px solid ${cardBorder}`;
         
         item.innerHTML = `
-          <div style="width: 80px; height: 80px; background-color: ${color.hex}; border: 1px solid #4b5563; border-radius: 8px; flex-shrink: 0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);"></div>
+          <div style="width: 80px; height: 80px; background-color: ${color.hex}; border: 1px solid #9ca3af; border-radius: 12px; flex-shrink: 0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);"></div>
           <div style="flex: 1;">
-            <div style="font-weight: bold; font-size: 18px; color: #f3f4f6;">${color.name}</div>
-            <div style="font-family: monospace; font-size: 14px; color: #a5b4fc; margin-top: 4px;">${color.hex} <span style="color: #6b7280">|</span> ${color.rgb}</div>
-            <div style="font-size: 14px; color: #d1d5db; margin-top: 8px; line-height: 1.5;">${color.description}</div>
+            <div style="font-weight: bold; font-size: 18px; color: ${textColor}; margin-bottom: 5px;">${color.name}</div>
+            <div style="font-family: monospace; font-size: 14px; color: ${codeColor}; margin-bottom: 8px;">${color.hex} <span style="color: #9ca3af; margin: 0 8px;">|</span> ${color.rgb}</div>
+            <div style="font-size: 14px; color: ${descColor}; line-height: 1.5;">${color.description}</div>
           </div>
         `;
         paletteContainer.appendChild(item);
       });
       printContainer.appendChild(paletteContainer);
 
+      // Generate Image
       const canvas = await html2canvas(printContainer, {
-        scale: 2,
+        scale: 2, 
         useCORS: true,
-        backgroundColor: '#111827'
+        backgroundColor: isDark ? '#111827' : '#ffffff'
       });
       
-      const imgData = canvas.toDataURL('image/jpeg', 0.9);
-      const imgProps = doc.getImageProperties(imgData);
-      const pdfWidth = pageWidth - (margin * 2);
-      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+      const imgData = canvas.toDataURL('image/jpeg', 0.95);
+      
+      const imgHeight = (canvas.height * contentWidth) / canvas.width;
+      
+      let heightLeft = imgHeight;
+      let position = margin;
 
-      doc.addImage(imgData, 'JPEG', margin, margin, pdfWidth, pdfHeight);
+      doc.addImage(imgData, 'JPEG', margin, position, contentWidth, imgHeight);
+      heightLeft -= contentHeight;
+
+      while (heightLeft > 0) {
+        position -= contentHeight; 
+        doc.addPage();
+        doc.addImage(imgData, 'JPEG', margin, position, contentWidth, imgHeight);
+        heightLeft -= contentHeight;
+      }
+
       doc.save('color-palette-analysis.pdf');
-
       document.body.removeChild(printContainer);
 
     } catch (err) {
       console.error("PDF generation failed", err);
-      alert("PDF 생성 중 오류가 발생했습니다.");
+      alert("PDF 생성 중 오류가 발생했습니다: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setIsGeneratingPdf(false);
     }
@@ -358,22 +407,22 @@ export default function App() {
     if (isLoading) {
         return (
             <div className="flex flex-col items-center justify-center h-full text-center p-8">
-                <div className="w-12 h-12 border-4 border-t-indigo-500 border-gray-600 rounded-full animate-spin"></div>
-                <h3 className="text-xl font-semibold mt-6">분석 중...</h3>
-                <p className="text-gray-400 mt-2">Gemini가 이미지의 마법 같은 색상을 찾고 있습니다.</p>
+                <div className="w-12 h-12 border-4 border-t-indigo-500 border-gray-200 dark:border-gray-600 rounded-full animate-spin"></div>
+                <h3 className="text-xl font-semibold mt-6 text-gray-900 dark:text-white">분석 중...</h3>
+                <p className="text-gray-500 dark:text-gray-400 mt-2">Gemini가 이미지의 마법 같은 색상을 찾고 있습니다.</p>
             </div>
         );
     }
 
     if (error) {
         return (
-            <div className="flex flex-col items-center justify-center h-full text-center p-8 bg-red-900/20 border border-red-500/30 rounded-lg">
-                <h3 className="text-xl font-semibold text-red-400">분석 실패</h3>
-                <p className="text-gray-300 mt-2 max-w-md">{error}</p>
+            <div className="flex flex-col items-center justify-center h-full text-center p-8 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-500/30 rounded-lg">
+                <h3 className="text-xl font-semibold text-red-600 dark:text-red-400">분석 실패</h3>
+                <p className="text-gray-600 dark:text-gray-300 mt-2 max-w-md">{error}</p>
                 {error.includes("API Key") && (
                    <button 
                      onClick={() => setIsKeyModalOpen(true)}
-                     className="mt-4 px-4 py-2 bg-red-800 hover:bg-red-700 text-white rounded-lg text-sm transition-colors"
+                     className="mt-4 px-4 py-2 bg-red-600 hover:bg-red-700 dark:bg-red-800 dark:hover:bg-red-700 text-white rounded-lg text-sm transition-colors"
                    >
                      API Key 설정하기
                    </button>
@@ -386,11 +435,11 @@ export default function App() {
         return (
             <div className="space-y-4" ref={resultsRef}>
                 <div className="flex items-center justify-between px-1">
-                  <h2 className="text-2xl font-bold text-white">색상 팔레트</h2>
+                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white">색상 팔레트</h2>
                   <button 
                     onClick={downloadPDF}
                     disabled={isGeneratingPdf}
-                    className="flex items-center space-x-2 text-sm text-indigo-400 hover:text-indigo-300 transition-colors disabled:text-gray-500 disabled:cursor-wait"
+                    className="flex items-center space-x-2 text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300 transition-colors disabled:text-gray-400 dark:disabled:text-gray-500 disabled:cursor-wait"
                   >
                     <DownloadIcon className="w-5 h-5" />
                     <span>{isGeneratingPdf ? '생성 중...' : 'PDF 다운로드'}</span>
@@ -404,21 +453,28 @@ export default function App() {
     }
 
     return (
-        <div className="flex flex-col items-center justify-center h-full text-center p-8 border-2 border-dashed border-gray-700 rounded-lg">
-            <SparklesIcon className="w-12 h-12 text-gray-500 mb-4" />
-            <h3 className="text-xl font-semibold">분석 대기 중</h3>
-            <p className="text-gray-400 mt-2">이미지를 업로드하고 '색상 분석'을 클릭하여 결과를 확인하세요.</p>
+        <div className="flex flex-col items-center justify-center h-full text-center p-8 border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-lg">
+            <SparklesIcon className="w-12 h-12 text-gray-400 dark:text-gray-500 mb-4" />
+            <h3 className="text-xl font-semibold text-gray-900 dark:text-white">분석 대기 중</h3>
+            <p className="text-gray-500 dark:text-gray-400 mt-2">이미지를 업로드하고 '색상 분석'을 클릭하여 결과를 확인하세요.</p>
         </div>
     );
   };
 
   return (
-    <div className="min-h-screen bg-gray-900 text-gray-100 flex flex-col p-4 sm:p-6 lg:p-8 relative">
-      {/* Settings Button */}
-      <div className="absolute top-4 right-4 sm:top-8 sm:right-8">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 flex flex-col p-4 sm:p-6 lg:p-8 relative transition-colors duration-300">
+      {/* Settings & Theme Buttons */}
+      <div className="absolute top-4 right-4 sm:top-8 sm:right-8 flex items-center space-x-2">
+        <button
+          onClick={toggleTheme}
+          className="p-2 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-800 rounded-full transition-colors"
+          title={theme === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환'}
+        >
+          {theme === 'dark' ? <SunIcon className="w-6 h-6" /> : <MoonIcon className="w-6 h-6" />}
+        </button>
         <button
           onClick={() => setIsKeyModalOpen(true)}
-          className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-full transition-colors"
+          className="p-2 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-800 rounded-full transition-colors"
           title="API Key 설정"
         >
           <SettingsIcon className="w-6 h-6" />
@@ -426,17 +482,17 @@ export default function App() {
       </div>
 
       <header className="text-center mb-8">
-        <h1 className="text-4xl sm:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-indigo-600">
+        <h1 className="text-4xl sm:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-indigo-600 dark:from-purple-400 dark:to-indigo-600">
           이미지에서 컬러추출
         </h1>
-        <p className="text-gray-400 mt-2 max-w-2xl mx-auto">
+        <p className="text-gray-600 dark:text-gray-400 mt-2 max-w-2xl mx-auto">
           이미지를 업로드하여 Gemini의 강력한 기능으로 고유한 색상 팔레트를 즉시 발견하세요.
         </p>
       </header>
 
       <main className="flex-grow grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-7xl mx-auto w-full">
         {/* Left Panel: Image Upload & Preview */}
-        <div className="flex flex-col bg-gray-800/50 rounded-xl p-6 shadow-2xl">
+        <div className="flex flex-col bg-white dark:bg-gray-800/50 rounded-xl p-6 shadow-xl dark:shadow-2xl border border-gray-100 dark:border-gray-700/50">
           <div className="flex-grow flex flex-col justify-center items-center relative">
             <input
               type="file"
@@ -462,16 +518,16 @@ export default function App() {
                     />
                     
                     {!isEyedropperActive && (
-                        <button onClick={triggerFileSelect} className="absolute inset-0 bg-black/70 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity rounded-lg text-lg font-medium">
+                        <button onClick={triggerFileSelect} className="absolute inset-0 bg-black/50 hover:bg-black/70 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity rounded-lg text-lg font-medium">
                         이미지 변경
                         </button>
                     )}
                 </div>
 
-                <div className="mt-4 flex items-center space-x-4 w-full bg-gray-900/80 p-3 rounded-lg border border-gray-700">
+                <div className="mt-4 flex items-center space-x-4 w-full bg-white dark:bg-gray-900/80 p-3 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
                     <button 
                         onClick={() => setIsEyedropperActive(!isEyedropperActive)}
-                        className={`p-2 rounded-md transition-colors ${isEyedropperActive ? 'bg-indigo-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+                        className={`p-2 rounded-md transition-colors ${isEyedropperActive ? 'bg-indigo-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
                         title="스포이드 도구 전환"
                     >
                         <EyeDropperIcon className="w-6 h-6" />
@@ -480,20 +536,20 @@ export default function App() {
                     <div className="flex-1 flex items-center justify-between">
                         {isEyedropperActive && hoverColor ? (
                              <div className="flex items-center space-x-3">
-                                <div className="w-8 h-8 rounded-full border border-gray-500 shadow-sm" style={{ backgroundColor: hoverColor }}></div>
-                                <span className="font-mono text-white">{hoverColor}</span>
-                                <span className="text-xs text-gray-400">(클릭하여 선택)</span>
+                                <div className="w-8 h-8 rounded-full border border-gray-300 dark:border-gray-500 shadow-sm" style={{ backgroundColor: hoverColor }}></div>
+                                <span className="font-mono text-gray-900 dark:text-white">{hoverColor}</span>
+                                <span className="text-xs text-gray-500 dark:text-gray-400">(클릭하여 선택)</span>
                              </div>
                         ) : pickedColor ? (
                             <div className="flex items-center space-x-3">
-                                <div className="w-8 h-8 rounded-full border border-gray-500 shadow-sm" style={{ backgroundColor: pickedColor.hex }}></div>
+                                <div className="w-8 h-8 rounded-full border border-gray-300 dark:border-gray-500 shadow-sm" style={{ backgroundColor: pickedColor.hex }}></div>
                                 <div className="flex flex-col">
-                                    <span className="font-mono text-white font-bold">{pickedColor.hex}</span>
-                                    <span className="text-xs text-gray-400 font-mono">{pickedColor.rgb}</span>
+                                    <span className="font-mono text-gray-900 dark:text-white font-bold">{pickedColor.hex}</span>
+                                    <span className="text-xs text-gray-500 dark:text-gray-400 font-mono">{pickedColor.rgb}</span>
                                 </div>
                             </div>
                         ) : (
-                            <span className="text-gray-500 text-sm">색상을 선택하려면 도구를 선택하세요</span>
+                            <span className="text-gray-500 dark:text-gray-400 text-sm">색상을 선택하려면 도구를 선택하세요</span>
                         )}
                     </div>
                 </div>
@@ -504,18 +560,18 @@ export default function App() {
                     onClick={triggerFileSelect}
                     onDrop={(e) => { e.preventDefault(); handleImageChange({ target: e.dataTransfer } as any); }}
                     onDragOver={(e) => e.preventDefault()}
-                    className="w-full h-full min-h-[300px] flex flex-col justify-center items-center border-4 border-dashed border-gray-600 hover:border-indigo-500 rounded-lg cursor-pointer transition-colors p-6 text-center"
+                    className="w-full h-full min-h-[300px] flex flex-col justify-center items-center border-4 border-dashed border-gray-300 dark:border-gray-600 hover:border-indigo-500 dark:hover:border-indigo-500 rounded-lg cursor-pointer transition-colors p-6 text-center bg-gray-50 dark:bg-transparent"
                 >
-                    <UploadIcon className="w-16 h-16 text-gray-500 mb-4" />
-                    <span className="font-semibold text-lg">클릭하여 업로드하거나 드래그 앤 드롭하세요</span>
-                    <span className="text-gray-400 mt-1">PNG, JPG, WEBP 등</span>
+                    <UploadIcon className="w-16 h-16 text-gray-400 dark:text-gray-500 mb-4" />
+                    <span className="font-semibold text-lg text-gray-700 dark:text-gray-200">클릭하여 업로드하거나 드래그 앤 드롭하세요</span>
+                    <span className="text-gray-500 dark:text-gray-400 mt-1">PNG, JPG, WEBP 등</span>
                 </div>
             )}
           </div>
           <button
             onClick={handleAnalyzeClick}
             disabled={!imageFile || isLoading}
-            className="w-full mt-6 flex items-center justify-center px-6 py-4 bg-indigo-600 text-white font-bold text-lg rounded-lg hover:bg-indigo-500 disabled:bg-gray-700 disabled:text-gray-400 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 disabled:scale-100 shadow-lg"
+            className="w-full mt-6 flex items-center justify-center px-6 py-4 bg-indigo-600 text-white font-bold text-lg rounded-lg hover:bg-indigo-500 disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:text-gray-500 dark:disabled:text-gray-400 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 disabled:scale-100 shadow-lg"
           >
             <SparklesIcon className="w-6 h-6 mr-3"/>
             {isLoading ? '분석 중...' : '색상 분석'}
@@ -523,30 +579,30 @@ export default function App() {
         </div>
 
         {/* Right Panel: Results */}
-        <div className="bg-gray-800/50 rounded-xl p-6 shadow-2xl overflow-y-auto max-h-[75vh]">
+        <div className="bg-white dark:bg-gray-800/50 rounded-xl p-6 shadow-xl dark:shadow-2xl overflow-y-auto max-h-[75vh] border border-gray-100 dark:border-gray-700/50">
             <ResultsPanel />
         </div>
       </main>
 
       {/* API Key Modal */}
       {isKeyModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="bg-gray-800 border border-gray-700 rounded-xl shadow-2xl max-w-md w-full p-6 relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 dark:bg-black/70 p-4 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl max-w-md w-full p-6 relative">
             <button 
               onClick={() => {
                 setIsKeyModalOpen(false);
                 setKeyTestStatus('idle');
                 setKeyTestMessage('');
               }}
-              className="absolute top-4 right-4 text-gray-400 hover:text-white"
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-900 dark:hover:text-white"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
               </svg>
             </button>
             
-            <h2 className="text-xl font-bold text-white mb-4">API Key 설정</h2>
-            <p className="text-gray-400 text-sm mb-6">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">API Key 설정</h2>
+            <p className="text-gray-600 dark:text-gray-400 text-sm mb-6">
               Gemini API 키를 입력해주세요. 키는 당신의 브라우저에 암호화되어 안전하게 저장됩니다.
             </p>
             
@@ -557,7 +613,7 @@ export default function App() {
                   value={inputApiKey}
                   onChange={(e) => setInputApiKey(e.target.value)}
                   placeholder="AIzaSy... 키를 여기에 붙여넣으세요"
-                  className="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 transition-colors"
+                  className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-3 text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 transition-colors"
                 />
               </div>
               
@@ -574,9 +630,9 @@ export default function App() {
               {/* Status Messages */}
               {keyTestMessage && (
                  <div className={`mt-4 p-3 rounded-lg text-sm ${
-                    keyTestStatus === 'success' ? 'bg-green-900/30 text-green-400 border border-green-800' :
-                    keyTestStatus === 'error' ? 'bg-red-900/30 text-red-400 border border-red-800' :
-                    'bg-gray-700/30 text-gray-300'
+                    keyTestStatus === 'success' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800' :
+                    keyTestStatus === 'error' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800' :
+                    'bg-gray-100 dark:bg-gray-700/30 text-gray-700 dark:text-gray-300'
                  }`}>
                    {keyTestMessage}
                  </div>

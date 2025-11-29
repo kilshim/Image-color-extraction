@@ -33,25 +33,25 @@ export const ColorSwatch: React.FC<ColorSwatchProps> = ({ color }) => {
   const swatchStyle = { backgroundColor: color.hex };
 
   return (
-    <div className="flex items-start space-x-4 p-4 bg-gray-800/50 rounded-lg transition-all duration-300 hover:bg-gray-700/50">
+    <div className="flex items-start space-x-4 p-4 bg-white dark:bg-gray-800/50 rounded-lg transition-all duration-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 shadow-sm border border-gray-200 dark:border-gray-700">
       <div
-        className="w-16 h-16 rounded-md border-2 border-gray-600 flex-shrink-0"
+        className="w-16 h-16 rounded-md border border-gray-200 dark:border-gray-600 flex-shrink-0 shadow-sm"
         style={swatchStyle}
       ></div>
       <div className="flex-1">
         <div className="flex items-center justify-between">
-          <h3 className="font-bold text-lg text-white">{color.name}</h3>
+          <h3 className="font-bold text-lg text-gray-900 dark:text-white">{color.name}</h3>
           <button
             onClick={handleCopy}
-            className="flex items-center space-x-2 px-3 py-1 bg-gray-700 text-gray-300 rounded-md hover:bg-indigo-600 hover:text-white transition-colors text-sm"
+            className="flex items-center space-x-2 px-3 py-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-md hover:bg-indigo-100 dark:hover:bg-indigo-600 hover:text-indigo-700 dark:hover:text-white transition-colors text-sm"
             aria-label={`Copy hex code ${color.hex}`}
           >
             <span className="font-mono">{color.hex}</span>
-            {copied ? <CheckIcon className="w-4 h-4 text-green-400" /> : <ClipboardIcon className="w-4 h-4" />}
+            {copied ? <CheckIcon className="w-4 h-4 text-green-500 dark:text-green-400" /> : <ClipboardIcon className="w-4 h-4" />}
           </button>
         </div>
-        <p className="text-gray-400 font-mono text-xs mt-1">{color.rgb}</p>
-        <p className="text-gray-400 mt-1 text-sm">{color.description}</p>
+        <p className="text-gray-500 dark:text-gray-400 font-mono text-xs mt-1">{color.rgb}</p>
+        <p className="text-gray-600 dark:text-gray-400 mt-1 text-sm">{color.description}</p>
       </div>
     </div>
   );
