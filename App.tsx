@@ -198,20 +198,82 @@ export default function App() {
     return decryptKey(stored);
   };
 
+  // --- Image Handling Logic ---
+  const processFile = useCallback((file: File) => {
+    if (!file.type.startsWith('image/')) {
+        alert('이미지 파일만 업로드 가능합니다.');
+        return;
+    }
+    
+    // Revoke old URL to avoid memory leaks
+    if (imageUrl) {
+        URL.revokeObjectURL(imageUrl);
+    }
+
+    setImageFile(file);
+    setImageUrl(URL.createObjectURL(file));
+    setAnalysisResult(null);
+    setError(null);
+    setPickedColor(null);
+    setIsEyedropperActive(false);
+  }, [imageUrl]);
+
   const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      if (imageUrl) {
-        URL.revokeObjectURL(imageUrl);
-      }
-      setImageFile(file);
-      setImageUrl(URL.createObjectURL(file));
-      setAnalysisResult(null);
-      setError(null);
-      setPickedColor(null);
-      setIsEyedropperActive(false);
+        processFile(file);
     }
   };
+
+  const handlePaste = useCallback(async (e: ClipboardEvent) => {
+    // 1. Check for files (Image Copy)
+    if (e.clipboardData?.files.length) {
+      const file = e.clipboardData.files[0];
+      if (file.type.startsWith('image/')) {
+        e.preventDefault();
+        processFile(file);
+        return;
+      }
+    }
+
+    // 2. Check for text (Image URL Copy)
+    const pastedText = e.clipboardData?.getData('text');
+    if (pastedText && (pastedText.startsWith('http') || pastedText.startsWith('data:image'))) {
+        try {
+            // Only attempt to fetch if it looks remotely like an image or a URL
+            // Basic indicator: prevent blocking normal copy-paste in other fields if needed, 
+            // but since we are global, we should be careful. 
+            // However, typical UX is: if I paste on the body, I expect the app to handle it.
+            
+            // Try fetching
+            const response = await fetch(pastedText);
+            if (!response.ok) throw new Error('Network error');
+            
+            const blob = await response.blob();
+            if (blob.type.startsWith('image/')) {
+                e.preventDefault();
+                const file = new File([blob], "pasted-image", { type: blob.type });
+                processFile(file);
+            }
+        } catch (err) {
+            console.warn("Clipboard fetch failed or not an image URL", err);
+            // If the user explicitly pasted an image URL that fails CORS, we should probably let them know
+            // only if they are not focused on an input.
+            // But since this is a global listener, we'll just log it to avoid annoying popups for random text.
+            // If the user INTENDED to paste an image, they will see nothing happens.
+            // Let's add a check: if it looks like an image URL extension, warn them.
+             if (pastedText.match(/\.(jpeg|jpg|gif|png|webp)/i)) {
+                 alert("이미지를 불러올 수 없습니다. (CORS 보안 제한)\n이미지를 다운로드 후 업로드하거나, '이미지 복사' 기능을 사용해주세요.");
+             }
+        }
+    }
+  }, [processFile]);
+
+  useEffect(() => {
+      window.addEventListener('paste', handlePaste);
+      return () => window.removeEventListener('paste', handlePaste);
+  }, [handlePaste]);
+
 
   const handleImageLoad = () => {
     const canvas = canvasRef.current;
@@ -558,13 +620,13 @@ export default function App() {
             ) : (
                 <div 
                     onClick={triggerFileSelect}
-                    onDrop={(e) => { e.preventDefault(); handleImageChange({ target: e.dataTransfer } as any); }}
-                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => { e.preventDefault(); e.stopPropagation(); if (e.dataTransfer.files[0]) processFile(e.dataTransfer.files[0]); }}
+                    onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
                     className="w-full h-full min-h-[300px] flex flex-col justify-center items-center border-4 border-dashed border-gray-300 dark:border-gray-600 hover:border-indigo-500 dark:hover:border-indigo-500 rounded-lg cursor-pointer transition-colors p-6 text-center bg-gray-50 dark:bg-transparent"
                 >
                     <UploadIcon className="w-16 h-16 text-gray-400 dark:text-gray-500 mb-4" />
                     <span className="font-semibold text-lg text-gray-700 dark:text-gray-200">클릭하여 업로드하거나 드래그 앤 드롭하세요</span>
-                    <span className="text-gray-500 dark:text-gray-400 mt-1">PNG, JPG, WEBP 등</span>
+                    <span className="text-gray-500 dark:text-gray-400 mt-1">또는 Ctrl+V로 이미지 붙여넣기</span>
                 </div>
             )}
           </div>
