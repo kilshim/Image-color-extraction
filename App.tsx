@@ -662,6 +662,18 @@ export default function App() {
         </div>
       </main>
 
+      {/* Footer link */}
+      <footer className="mt-8 text-center pb-4">
+        <a 
+          href="https://xn--design-hl6wo12cquiba7767a.com/" 
+          target="_blank" 
+          rel="noopener noreferrer"
+          className="text-gray-400 dark:text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors text-sm font-medium"
+        >
+          떨림과울림Design.com
+        </a>
+      </footer>
+
       {/* API Key Modal */}
       {isKeyModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 dark:bg-black/70 p-4 backdrop-blur-sm">
